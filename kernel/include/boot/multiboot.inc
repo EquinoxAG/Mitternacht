@@ -1,3 +1,4 @@
+%include "Morgenroetev1.inc"
 struc multiboot
 	.flags resd 1
 	.mem_lower resd 1
@@ -22,6 +23,30 @@ struc multiboot
 	.vbe_interface_len resw 1
 endstruc
 
+interface_open multibootSup
+	add flags, dword
+	add mem_lower, dword
+	add mem_upper, dword
+	add bootdevice, dword
+	add commandline, dword
+	add mod_count, dword
+	add mod_addr, dword
+	add sys_low, qword
+	add sys_hi, qword
+	add mmap_len, dword
+	add mmap_addr, dword
+	add drives_length, dword
+	add drives_addr, dword
+	add config_table, dword
+	add bootloader_name, dword
+	add apm_table, dword
+	add vbe_ctrl_info, dword
+	add vbe_mode_info, dword
+	add vbe_mode, word
+	add vbe_interface_seq, word
+	add vbe_interface_off, word
+	add vbe_interface_len, word 
+interface_close
 
 %define MultibootStrucAddr 0x500 ;Address at which the multiootstructure will be relocated to or written by the self written bootloader to
 %define MemMapAddr 0x600 ;Relocates the MemMap to address 0x600 or if the bootloader from PerfOS is used create it at that address

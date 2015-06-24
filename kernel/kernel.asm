@@ -1,11 +1,16 @@
-%include "Morgenroete/Morgenroetev1.inc"
+%include "Morgenroetev1.inc"
+INCLUDE "boot/multiboot.inc"
+INCLUDE "graphics/vga_driver.inc"
 
-DefineCall kernelMain, 1, 'kernel.asm'
-
-
+DefineFunction kernelMain, 1, 'kernel.asm'
 
 ;The main function takes one argument
-DeclareCall kernelMain, 1
-	mov rax, Argument_0
+DeclareFunction kernelMain, MbrStrucAddr
+	mov rax, Arg_MbrStrucAddr
+
+	mov_ts edi, dword[ (rax->multibootSup).mmap_addr ]
+
+	secure_call LoadVGADriver
+	secure_call ClearScreen, 0x4F
 	jmp $
 EndFunction
