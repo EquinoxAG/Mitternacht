@@ -1,0 +1,5 @@
+cd kernel/include
+rm -rf ./Morgenroete
+git clone https://github.com/EquinoxAG/Morgenroete
+cd ..
+cd ..

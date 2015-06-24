@@ -1,5 +1,11 @@
-global kernelMain
+%include "Morgenroete/Morgenroetev1.inc"
 
-kernelMain:
-	mov rax, 0xF7F6
+DefineCall kernelMain, 1, 'kernel.asm'
+
+
+
+;The main function takes one argument
+DeclareCall kernelMain, 1
+	mov rax, Argument_0
 	jmp $
+EndFunction
