@@ -16,10 +16,37 @@
 
 interface_open IGraphicDriver
 	add clearScreen, qword
+	add set_foreground_attr, qword
+	add set_background_attr, qword
+	add draw_character, qword
+	add draw_string, qword
+	add draw_string_transparent, qword
 interface_close
 
 DefineFunction LoadVGADriver, 0, 'vga_driver.asm'
-DefinePolymorphicFunction ClearScreen, 1, 'vga_driver.asm', CallGraphicFunction, IGraphicDriver.clearScreen
+DefinePolymorphicFunction ClearScreen, 0, 'vga_driver.asm', CallGraphicFunction, IGraphicDriver.clearScreen
+DefinePolymorphicFunction SetForegroundAttribute, 1, 'vga_driver.asm', CallGraphicFunction, IGraphicDriver.set_foreground_attr
+DefinePolymorphicFunction SetBackgroundAttribute, 1, 'vga_driver.asm', CallGraphicFunction, IGraphicDriver.set_background_attr
+DefinePolymorphicFunction DrawCharacter, 1, 'vga_driver.asm', CallGraphicFunction, IGraphicDriver.draw_character
+DefinePolymorphicFunction DrawString, 1, 'vga_driver.asm', CallGraphicFunction, IGraphicDriver.draw_string
+;DefinePolymorphicFunction DrawStringTransparent, 1, 'vga_driver.asm', CallGraphicFunction, IGraphicDriver.draw_string_transparent
+
+%define COLOR_BLACK 0
+%define COLOR_BLUE 1
+%define COLOR_GREEN 2
+%define COLOR_CYAN 3
+%define COLOR_RED 4
+%define COLOR_MAGENTA 5
+%define COLOR_BROWN 6
+%define COLOR_BRIGHTGREY 7
+%define COLOR_GREY 8
+%define COLOR_BRIGHTBLUE 9
+%define COLOR_BRIGHTGREEN 10
+%define COLOR_BRIGHTCYAN 11
+%define COLOR_BRIGHTRED 12
+%define COLOR_BRIGHTMAGENTA 13
+%define COLOR_YELLOW 14
+%define COLOR_WHITE 15
 
 
 %define VGA_AC_INDEX 0x3C0

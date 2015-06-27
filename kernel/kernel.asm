@@ -11,6 +11,13 @@ DeclareFunction kernelMain, MbrStrucAddr
 	mov_ts edi, dword[ (rax->multibootSup).mmap_addr ]
 
 	secure_call LoadVGADriver
-	secure_call ClearScreen, 0x4F
+	secure_call SetBackgroundAttribute,COLOR_BLUE
+	secure_call ClearScreen
+	secure_call SetBackgroundAttribute, COLOR_RED
+	secure_call SetForegroundAttribute, COLOR_BLACK
+	secure_call DrawString, DrawStr
 	jmp $
 EndFunction
+
+
+DrawStr db 'Hallo Welt from kernel: Very very very long long long string in your neighbarhood, even longer string',0
