@@ -60,7 +60,6 @@ DummyFunction:
 ;cl = index, ebx = color RGB
 ;writes the given color in ebx to the port cl specifies in the DAC Palette
 write_dac_color:
-
 	mov dx, 0x03C8		;Prepare the DAC for the write
 	mov al, cl		;Tell the dac which entry will be written to
 	out dx, al
@@ -186,9 +185,20 @@ DeclareFunction DrawString, str_addr
 		mov edi, r9d				;Load edi with the next address to write to
 
 		mov al, byte[ rsi ]
+
 		test al, al
 		jz .drawForeground
 
+		cmp al, 0x0A
+		jnz .contBackDraw
+
+		sub r9d, r10d				;Select the current begin of the character draw line
+		add r9d, 720				;Select the next character line
+		xor r10d, r10d				;Reset the character draw count in the current line
+		add rsi, 1
+		jmp .DrawBackgroundOuterLoop
+
+	.contBackDraw:
 		add rsi, 1				;Load the address of the next character
 		add r9d, 1				;Load the draw address of the next character
 
@@ -222,6 +232,16 @@ DeclareFunction DrawString, str_addr
 
 			test al, al
 			jz .done
+
+			cmp al, 0x0A
+			jnz .contDrawFore
+
+			sub r9d, r10d					;Select begin of the current chatacter line
+			add r9d, 720					;Select the next draw line
+			xor r10d, r10d					;Reset the character draw count in the current character line
+			add rsi, 1
+			jmp .drawForegroundOuterLoop
+		.contDrawFore:
 
 			mov r8d, Font8X8BIOS				;Load Font address
 			add rsi, 1
@@ -339,12 +359,14 @@ DeclareFunction ClearScreen
 	mov al, byte[ eax ]	;Load the latch register
 
 	mov ecx, 90*480		;720*480 : 8 Pixels per byte => 90*480 bytes need to be cleared
+	mov eax, dword[ vga_driver_settings.lfb_addr ]
 	.DrawBackground:
 		mov byte[ edi ], al		;It is unneccessary what is in al, because the latch register is written to vram and nothing from the host memory
 		add edi, 1
 		sub ecx, 1
 		jnz .DrawBackground
 
+	mov dword[ vga_driver_settings.curr_write_addr ], eax
 	outportb VGA_GC_INDEX, 5
 	outportb VGA_GC_DATA, 0		;Select standard write mode 0 at the end
 EndFunction

@@ -145,6 +145,7 @@ ProtectedMode:
 		and ecx, 0x3
 		rep movsb
 
+
 		add ebx, HeaderSize
 		sub dx, 1
 		jnz .loadAll

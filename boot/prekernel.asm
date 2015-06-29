@@ -2,47 +2,27 @@
 %define MAGIC 0x1BADB002
 %define CHECKSUM -(MAGIC+FLAGS)
 %include "boot/multiboot.inc"
+%include "memory/virtual_memory.inc"
 
 section multiboot
 align 4
 my_magic dd MAGIC
 dd FLAGS
 dd CHECKSUM
-%define STACK_BASE_ADDR  0x400000
-%define GDT_BASE 0x800
-%define gdt_limit 0x1500
-%define gdt_base 0x1502
+%define STACK_BASE_ADDR  0x500000
+%define GDT_BASE 0x900
+%define gdt_limit 0x980
+%define gdt_base 0x982
 extern kernel_start
 extern kernel_end
 
-%define BOOTUP_PML4_ADDR 0x300000
+
 [BITS 32]
 section .text
 global _start
 _start:
 	mov esp, STACK_BASE_ADDR
-	
-	cmp ebx, 0x500			;In EBX is the address of the multibootstructure if the multibootstructure already resides at 0x500 there is no need to relocate it
-	jz .RelocateDone
-
-	mov esi, ebx			
-	mov edi, MultibootStrucAddr
-	mov ecx, 22
-	rep movsd			; Else transfer the multibootstructure to address 0x500
-	
-	.RelocateDone:	
-		mov esi, dword[ MultibootStrucAddr + multiboot.mmap_addr ]	;MultibootStrucAddrs value is 0x500 so the memory map of int 15h 0xe820 is relocated too
-	
-		mov dword[ MultibootStrucAddr + multiboot.mmap_addr ], MemMapAddr ;Memmap will be at 0x600 from now on
-		
-		or esi, esi
-		jz .RemoveMmapDone	; Got no memory map? skip the relocation
-
-		mov ecx, dword[ MultibootStrucAddr + multiboot.mmap_length ]
-		mov edi, 0x600
-		rep movsb		;Relocate memory map
-
-	.RemoveMmapDone:
+	mov dword[ MultibootStruc_safer ], ebx
 
 	mov eax, 0x80000001
 	cpuid
@@ -155,7 +135,7 @@ InitialisePaging:
 		mov dword[ edi ], eax		; First PML4 entry maps 512GB by default
 		mov dword[ edi + 4 ], ebx	; zero out upper half
 		
-		mov ecx, 32			; We need 4 entries to identity map all 4 GB memory
+		mov ecx, 1			; We need 4 entries to identity map all 4 GB memory
 		add edi, 0x1000			
 		push edi
 		.MapAll:
@@ -170,7 +150,7 @@ InitialisePaging:
 		pop edi
 		add edi, 0x1000
 		mov eax, 0x8B
-		mov ecx, 32*512
+		mov ecx, 5			; Map first 10 MB
 			
 
 		.Map:
@@ -198,8 +178,11 @@ LongMode:
 	mov fs, ax
 	mov ss, ax
 	mov gs, ax
-	
-	mov rdi,MultibootStrucAddr
+
+	mov edi, dword[ MultibootStruc_safer ]
 	call kernelMain
 
+section .bss
+MultibootStruc_safer resd 1
+section .text
 NoLongModeMsg db 'Long mode %x isi %d not available the OS can not boot please restart the PC', 0

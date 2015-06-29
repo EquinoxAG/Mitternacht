@@ -6,9 +6,9 @@
 
 %define COLOR_BLACK 0
 
-%ifndef VGA_DRIVER
-	extern GraphicDriverInterface
-%endif
+
+ExportSymbolIfInFile 'vga_driver.asm',GraphicDriverInterface
+
 
 %macro CallGraphicFunction 1
 	call qword[ GraphicDriverInterface + %1_additional_parameter ]
