@@ -4,17 +4,17 @@
 %include "boot/multiboot.inc"
 %include "memory/virtual_memory.inc"
 
-section multiboot
-align 4
-my_magic dd MAGIC
-dd FLAGS
-dd CHECKSUM
-%define STACK_BASE_ADDR  0x500000
-%define GDT_BASE 0x900
-%define gdt_limit 0x980
-%define gdt_base 0x982
-extern kernel_start
-extern kernel_end
+	section multiboot
+	align 4
+	my_magic dd MAGIC
+	dd FLAGS
+	dd CHECKSUM
+	%define STACK_BASE_ADDR  0x500000
+	%define GDT_BASE 0x900
+	%define gdt_limit 0x980
+	%define gdt_base 0x982
+	extern kernel_start
+	extern kernel_end
 
 
 [BITS 32]
@@ -107,7 +107,7 @@ align 8
 		mov cr4, eax	; Set PAE-Bit 
 
 		call InitialisePaging
-	
+
 		mov ecx, 0xC0000080
 		rdmsr
 		or eax, 0x100	;Set Long Mode Bit
@@ -136,7 +136,7 @@ InitialisePaging:
 		mov dword[ edi + 4 ], ebx	; zero out upper half
 		
 		mov ecx, 1			; We need 4 entries to identity map all 4 GB memory
-		add edi, 0x1000			
+		add edi, 0x1000			; 0x601000
 		push edi
 		.MapAll:
 			add eax, 0x1000
@@ -148,7 +148,7 @@ InitialisePaging:
 			jnz .MapAll
 
 		pop edi
-		add edi, 0x1000
+		add edi, 0x1000			;0x602000
 		mov eax, 0x8B
 		mov ecx, 5			; Map first 10 MB
 			

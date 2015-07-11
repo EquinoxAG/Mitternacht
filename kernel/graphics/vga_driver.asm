@@ -82,7 +82,7 @@ write_dac_color:
 ;-------------------------------------------------------
 ;Sets the foreground attribute of the driver, text will be drawn in that color
 ;-------------------------------------------------
-DeclareFunction SetForegroundAttribute, new_attr
+DeclareFunction SetForegroundAttribute( new_attr )
 	mov rax, Arg_new_attr					;Load the new attribute value
 	and al, 0x0F						;Only 4-bit attributes are allowed
 	mov byte[ vga_driver_settings.foreground_attr ], al	;Store the new foreground color
@@ -93,7 +93,7 @@ EndFunction
 ;-----------------------------------------------------------------------------
 ;Sets the background attribute of the driver, text will drawn onto that color
 ;----------------------------------------------------------------------------
-DeclareFunction SetBackgroundAttribute, new_attr
+DeclareFunction SetBackgroundAttribute( new_attr )
 	mov rax, Arg_new_attr
 	and al, 0x0F						;Only 4-bit attributes are allowed
 	mov byte[ vga_driver_settings.background_attr ], al
@@ -104,7 +104,7 @@ EndFunction
 ;----------------------------------------------------------------------------------
 ;Draws a character with the current foreground and background color on the screen
 ;----------------------------------------------------------------------------------
-DeclareFunction DrawCharacter, character
+DeclareFunction DrawCharacter( character )
 	mov r11, rbx							;Save rbx, cause rbx need to be persistent over function calls
 	mov rsi, Arg_character						;Load the character value for example 'A' = 65
 	mov r8d, dword[ vga_driver_settings.predrawn_backgrounds ]	;Load the address of the predrawn backgrounds
@@ -164,7 +164,7 @@ EndFunction
 ;---------------------------------------------------------------------------------
 ;Drawing a string with the current background color and the current foreground color
 ;-----------------------------------------------------------------------------
-DeclareFunction DrawString, str_addr
+DeclareFunction DrawString( str_addr )
 	mov r11, rbx						;rbx must be consitent over the call, therefore save it
 	mov rsi, Arg_str_addr					;
 	mov r8d, dword[ vga_driver_settings.predrawn_backgrounds ]	;Load address of the predrawn backgrounds to fast blit the backgrounds
@@ -278,18 +278,27 @@ EndFunction
 ;--------------------------------------------------------------
 ;Load VGADriver functions into the global interface function and preparing the output stage
 ;-------------------------------------------------------------
-DeclareFunction LoadVGADriver
+DeclareFunction LoadVGADriver()
 	ReserveStackSpace SaveRBX, qword
 	UpdateStackPtr
 
 	mov_ts qword[ SaveRBX ], rbx			;RBX must be consistent over calls
 
 	;Update Polymorphic function pointers
-	mov qword[ GraphicDriverInterface + IGraphicDriver.clearScreen ], ClearScreen
-	mov qword[ GraphicDriverInterface + IGraphicDriver.set_foreground_attr ], SetForegroundAttribute
-	mov qword[ GraphicDriverInterface + IGraphicDriver.set_background_attr ], SetBackgroundAttribute
-	mov qword[ GraphicDriverInterface + IGraphicDriver.draw_character ], DrawCharacter
-	mov qword[ GraphicDriverInterface + IGraphicDriver.draw_string ], DrawString
+	ResoluteFunctionName ClearScreen, 0				;Because the function name was defined by morgenroete, the name must be resoluted
+	mov qword[ GraphicDriverInterface + IGraphicDriver.clearScreen ], MGR_RFuncName
+
+	ResoluteFunctionName SetForegroundAttribute, 1
+	mov qword[ GraphicDriverInterface + IGraphicDriver.set_foreground_attr ], MGR_RFuncName
+
+	ResoluteFunctionName SetBackgroundAttribute, 1
+	mov qword[ GraphicDriverInterface + IGraphicDriver.set_background_attr ], MGR_RFuncName
+
+	ResoluteFunctionName DrawCharacter, 1
+	mov qword[ GraphicDriverInterface + IGraphicDriver.draw_character ], MGR_RFuncName
+
+	ResoluteFunctionName DrawString, 1
+	mov qword[ GraphicDriverInterface + IGraphicDriver.draw_string ], MGR_RFuncName
 
 	;Set up graphics mode 720x480 at 4 colors
 	mov rdi, graphic_720x480x16
@@ -345,7 +354,7 @@ EndFunction
 ;---------------------------------------------------
 ;Clears the screen with the current background color
 ;----------------------------------------------------
-DeclareFunction ClearScreen
+DeclareFunction ClearScreen()
 	outportb VGA_GC_INDEX, 5
 	outportb VGA_GC_DATA, 1		;Select vga write mode 1 ( means content of the latch register is written directly to vram )
 
@@ -442,6 +451,7 @@ write_vga_regs:
 	ret
 
 
+ImportAllMgrFunctions
 
 ;Defines Colors starting at color 1 going up to color 0xF
 VGA_ColorPalette dd RGB18(0x00,0x00,0xFF),RGB18(0x00,0xFF,0x00),RGB18(0x33,0xCC,0xFF),RGB18(0xFF,0x00,0x00),RGB18(0xCC,0x33,0xFF),RGB18(0xB8,0x5C,0x00),\

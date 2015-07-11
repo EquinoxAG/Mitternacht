@@ -7,7 +7,7 @@ extern kernel_end
 ;----------------------------------------------------------------------------------
 ;Initialises the memory bitmap as well as reserving the reserved areas of memory
 ;---------------------------------------------------------------------------------
-DeclareFunction InitialiseMemoryManager, memoryMap, memoryMapLength
+DeclareFunction InitialiseMemoryManager( memoryMap, memoryMapLength )
 	mov rcx, Arg_memoryMapLength			;Load the length of the E820 memory map
 	xor rsi, rsi					;Maximal memory address is zero at the beginning
 	mov r8, rcx					;Backup the length of the E820 memory map
@@ -94,11 +94,11 @@ DeclareFunction InitialiseMemoryManager, memoryMap, memoryMapLength
 		mov edi, kernel_start
 		mov esi, dword[ physical_memory_manager.mmap_end ]
 		sub esi, edi
-		secure_call BlockFreeMemoryRange,rdi, rsi, Msg_kernel_resides	;Block the kernel code and the bitmap
+		secure_call BlockFreeMemoryRange(rdi, rsi, Msg_kernel_resides)	;Block the kernel code and the bitmap
 EndFunction
 
 ;Checks if the specified memory range is completely free
-DeclareFunction IsFreeMemoryRange, PhysMemStart, PhysMemLength
+DeclareFunction IsFreeMemoryRange(PhysMemStart, PhysMemLength)
 	test Arg_PhysMemLength, MEM_PAGE_MASK
 	jz .startSearching
 
@@ -123,7 +123,7 @@ DeclareFunction IsFreeMemoryRange, PhysMemStart, PhysMemLength
 	.endFunc:
 EndFunction
 
-DeclareFunction BlockFreeMemoryRange, PhysMemStart, PhysMemSize, Message
+DeclareFunction BlockFreeMemoryRange( PhysMemStart, PhysMemSize, Message)
 	test Arg_PhysMemSize, MEM_PAGE_MASK
 	jz .startBlock
 
@@ -151,6 +151,8 @@ EndFunction
 
 Msg_kernel_resides db 'Kernel code and memory bitmap',0
 Msg_blocked_mem db 'Unusable memory',0
+
+ImportAllMgrFunctions
 section .bss
 physical_memory_manager:
 	.mmap_beg resd 1

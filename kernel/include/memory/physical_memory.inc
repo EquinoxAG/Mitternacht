@@ -17,9 +17,9 @@ interface_open InternMemoryMap
 	add next, dword
 interface_close
 
-DefineFunction InitialiseMemoryManager, 2, 'pmemory.asm'
-DefineFunction IsFreeMemoryRange, 2, 'pmemory.asm'
-DefineFunction BlockFreeMemoryRange, 3, 'pmemory.asm'
+DefineFunction InitialiseMemoryManager, 2
+DefineFunction IsFreeMemoryRange, 2
+DefineFunction BlockFreeMemoryRange, 3
 
 %define MEM_PAGE_SIZE 0x10000
 %define MEM_PAGE_MASK 0x0FFFF

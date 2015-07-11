@@ -10,8 +10,8 @@
 ExportSymbolIfInFile 'vga_driver.asm',GraphicDriverInterface
 
 
-%macro CallGraphicFunction 1
-	call qword[ GraphicDriverInterface + %1_additional_parameter ]
+%macro CallGraphicFunction 2
+	call qword[ GraphicDriverInterface + %2 ]
 %endmacro
 
 interface_open IGraphicDriver
@@ -23,12 +23,12 @@ interface_open IGraphicDriver
 	add draw_string_transparent, qword
 interface_close
 
-DefineFunction LoadVGADriver, 0, 'vga_driver.asm'
-DefinePolymorphicFunction ClearScreen, 0, 'vga_driver.asm', CallGraphicFunction, IGraphicDriver.clearScreen
-DefinePolymorphicFunction SetForegroundAttribute, 1, 'vga_driver.asm', CallGraphicFunction, IGraphicDriver.set_foreground_attr
-DefinePolymorphicFunction SetBackgroundAttribute, 1, 'vga_driver.asm', CallGraphicFunction, IGraphicDriver.set_background_attr
-DefinePolymorphicFunction DrawCharacter, 1, 'vga_driver.asm', CallGraphicFunction, IGraphicDriver.draw_character
-DefinePolymorphicFunction DrawString, 1, 'vga_driver.asm', CallGraphicFunction, IGraphicDriver.draw_string
+DefineFunction LoadVGADriver, 0
+DefineFunction ClearScreen, 0, STDCALL_GCC64, CallGraphicFunction, IGraphicDriver.clearScreen
+DefineFunction SetForegroundAttribute, 1, STDCALL_GCC64, CallGraphicFunction, IGraphicDriver.set_foreground_attr
+DefineFunction SetBackgroundAttribute, 1, STDCALL_GCC64, CallGraphicFunction, IGraphicDriver.set_background_attr
+DefineFunction DrawCharacter, 1, STDCALL_GCC64, CallGraphicFunction, IGraphicDriver.draw_character
+DefineFunction DrawString, 1, STDCALL_GCC64, CallGraphicFunction, IGraphicDriver.draw_string
 ;DefinePolymorphicFunction DrawStringTransparent, 1, 'vga_driver.asm', CallGraphicFunction, IGraphicDriver.draw_string_transparent
 
 %define COLOR_BLACK 0
