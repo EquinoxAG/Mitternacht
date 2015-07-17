@@ -9,7 +9,7 @@
 	my_magic dd MAGIC
 	dd FLAGS
 	dd CHECKSUM
-	%define STACK_BASE_ADDR  0x500000
+	%define STACK_BASE_ADDR  0x5FFFF0
 	%define GDT_BASE 0x900
 	%define gdt_limit 0x980
 	%define gdt_base 0x982

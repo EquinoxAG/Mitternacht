@@ -2,7 +2,7 @@
 INCLUDE "boot/multiboot.inc"
 INCLUDE "graphics/vga_driver.inc"
 INCLUDE "memory/physical_memory.inc"
-;INCLUDE "memory/virtual_memory.inc"
+INCLUDE "memory/virtual_memory.inc"
 
 
 ;The main function takes one argument
@@ -24,7 +24,12 @@ kernelMain:
 	secure_call InitialiseMemoryManager( rdi, rsi )
 
 ;	secure_call IsFreeMemoryRange( 0x0, 0x1000)
-;	secure_call InitialiseVirtualMemory(BOOTUP_PML4_ADDR)
+	secure_call InitialiseVirtualMemory(BOOTUP_PML4_ADDR)
+	secure_call AllocateMemory( 0x80000000, PAGE_READ_WRITE_EXECUTE )
+	mov dword[ rax ], 100
+
+	jmp $
+
 	DestroyStack kernelSt
 	jmp $
 

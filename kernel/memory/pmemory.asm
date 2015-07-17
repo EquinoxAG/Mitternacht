@@ -1,5 +1,6 @@
 %include "Morgenroetev1.inc"
 INCLUDE "memory/physical_memory.inc"
+INCLUDE "memory/virtual_memory.inc"
 
 extern kernel_start
 extern kernel_end
@@ -24,6 +25,7 @@ DeclareFunction InitialiseMemoryManager( memoryMap, memoryMapLength )
 		mov rbx, rdi						;Load the entry address of the highest base address
 
 	.next_addr:
+		mov r15d, edi						;Select last entry
 		sub ecx, dword[ rdi + MemoryMap.entry_length ]		;Subtract the inspected bytes
 		add edi, dword[ rdi + MemoryMap.entry_length ]		;Select the next entry
 		add edi, 4						;The MemoryMap.entry_length field only specifies the length of the structure without itself
@@ -51,8 +53,10 @@ DeclareFunction InitialiseMemoryManager( memoryMap, memoryMapLength )
 		sub ecx, 1					;		;ecx holds the number of pages, every time one page descriptor was written, there is one page less to write to
 		jnz .FillTable
 
+	mov rdx, r15
 	mov rbx, rdx							;Reload the memory map address
 	mov rcx, r8							;Reload the memory map length
+
 
 	;Freeing all memory which is defined by the memory Map E820 as free
 	.startBlockingRanges:
@@ -61,8 +65,8 @@ DeclareFunction InitialiseMemoryManager( memoryMap, memoryMapLength )
 
 	.selectNextBlock:					;Okay select next entry
 		sub ecx, dword[ rbx + MemoryMap.entry_length ]
-		add ebx, dword[ rbx + MemoryMap.entry_length ]
-		add rbx, 4
+		sub ebx, dword[ rbx + MemoryMap.entry_length ]
+		sub rbx, 4
 		sub rcx, 4
 		jnz .startBlockingRanges
 
@@ -76,6 +80,12 @@ DeclareFunction InitialiseMemoryManager( memoryMap, memoryMapLength )
 			add edi, dword[ physical_memory_manager.mmap_beg ]	;Calculate the absolute address of the memory map entry to start with
 			shr rax, (MEM_PAGE_SIZE_SHR)				;Calculate the number of pages to free
 
+			mov rdx, rax
+			shl rdx, 3
+			sub rdx, InternMemoryMap_size
+			add edi, edx
+
+
 			test eax, eax
 			jz .selectNextBlock					;Select next block if no pages to free
 
@@ -84,17 +94,86 @@ DeclareFunction InitialiseMemoryManager( memoryMap, memoryMapLength )
 			mov_ts dword[ (edi->InternMemoryMap).next ], esi		;The next entry of the current free block is the last first free block
 			mov_ts dword[ (edi->InternMemoryMap).type ], MEM_FREE		;memory is free
 			mov dword[ physical_memory_manager.first_entry ], edi		;The next first entry of the memory map is the current one
-			add edi, InternMemoryMap_size					;Select next memory map entry addr
+
+			sub edi, InternMemoryMap_size					;Select next memory map entry addr
 			add qword[ physical_memory_manager.free_memory ], MEM_PAGE_SIZE	;Calculate amount of free memory
 			sub eax, 1							;Check if there are more pages to free
 			jnz .make_free
 			jmp .selectNextBlock
 	.done:
+
+		mov edi, dword[ physical_memory_manager.mmap_beg ]
+		mov esi, dword[ physical_memory_manager.first_entry ]
+
 		;The memory map is set up by now and should work properly, therefore block important memory ranges
 		mov edi, kernel_start
 		mov esi, dword[ physical_memory_manager.mmap_end ]
 		sub esi, edi
-		secure_call BlockFreeMemoryRange(rdi, rsi, Msg_kernel_resides)	;Block the kernel code and the bitmap
+		secure_call BlockFreeMemoryRange(rdi, rsi)	;Block the kernel code and the bitmap
+
+		;Block the address wehere the paging structs reside as well as 1 MB for the stack
+		mov edi, 0x500000
+		mov esi, 0x500000
+		secure_call BlockFreeMemoryRange( rdi, rsi)
+EndFunction
+
+
+DeclareFunction AllocateMemory( size, flags )
+	ReserveStackSpace MemFlags, qword
+	ReserveStackSpace VMemAddr, qword
+	UpdateStackPtr
+
+	mov r15, Arg_size
+	mov_ts qword[ MemFlags ], Arg_flags
+
+	secure_call ReserveVirtMemRange( r15 )
+
+	mov_ts qword[ VMemAddr ], rax
+	mov rbx, rax
+
+
+	mov edi, dword[ physical_memory_manager.first_entry ]
+	xor rcx, rcx
+
+	.StartMapping:
+		mov eax, dword[ edi + InternMemoryMap.next ]
+		mov dword[ physical_memory_manager.first_entry ], eax
+	
+		cmp dword[ edi + InternMemoryMap.type ], MEM_FREE
+		jnz .selectNext
+
+		mov dword[ edi + InternMemoryMap.type ], MEM_RESERVED
+
+		sub edi, dword[ physical_memory_manager.mmap_beg ]
+		shl edi, (MEM_PAGE_SIZE_SHR-BYTES_PER_PAGE_SHL)
+		
+
+		push rax
+		mov rax, rdi
+		
+		secure_call MapVirtToPhys( rbx, rax, MEM_PAGE_SIZE, qword[ MemFlags ] ) 
+
+		pop rax
+
+
+		sub r15, MEM_PAGE_SIZE
+		jbe .done
+
+		add rbx, MEM_PAGE_SIZE
+
+		.selectNext:
+			or eax, eax
+			jz .fatal_no_mem
+
+			mov edi, eax
+			jmp .StartMapping
+
+		.fatal_no_mem:
+			mov rcx, 0xFAD
+			jmp $
+
+	.done:
+		mov_ts rax, qword[ VMemAddr ]
 EndFunction
 
 ;Checks if the specified memory range is completely free
@@ -111,7 +190,7 @@ DeclareFunction IsFreeMemoryRange(PhysMemStart, PhysMemLength)
 		shl edi, (BYTES_PER_PAGE_SHL)
 		add edi, dword[ physical_memory_manager.mmap_beg ]
 	.startDeterminating:
-		cmp dword[ edi + InternMemoryMap.type ], 0
+		cmp dword[ edi + InternMemoryMap.type ], MEM_FREE
 		jnz .failed
 		add edi, InternMemoryMap_size
 		sub esi, 1
@@ -120,10 +199,13 @@ DeclareFunction IsFreeMemoryRange(PhysMemStart, PhysMemLength)
 		jmp .endFunc
 	.failed:
 		mov eax, dword[ edi + InternMemoryMap.next ]
+		cmp byte[ edi + InternMemoryMap.type ], MEM_UNUSABLE
+		jnz .endFunc
+		mov eax, Msg_blocked_mem
 	.endFunc:
 EndFunction
 
-DeclareFunction BlockFreeMemoryRange( PhysMemStart, PhysMemSize, Message)
+DeclareFunction BlockFreeMemoryRange( PhysMemStart, PhysMemSize)
 	test Arg_PhysMemSize, MEM_PAGE_MASK
 	jz .startBlock
 
@@ -141,15 +223,12 @@ DeclareFunction BlockFreeMemoryRange( PhysMemStart, PhysMemSize, Message)
 		jnz .no_change
 			sub qword[ physical_memory_manager.free_memory ], MEM_PAGE_SIZE
 		.no_change:
-		mov rdx, Arg_Message
-		mov dword[ edi + InternMemoryMap.next ], edx
-		mov dword[ edi + InternMemoryMap.type ], MEM_RESERVED
+		mov dword[ edi + InternMemoryMap.type ], MEM_UNUSABLE
 		add edi, InternMemoryMap_size
 		sub esi, 1
 		jnz .startBlocking
 EndFunction
 
-Msg_kernel_resides db 'Kernel code and memory bitmap',0
 Msg_blocked_mem db 'Unusable memory',0
 
 ImportAllMgrFunctions
@@ -158,4 +237,5 @@ physical_memory_manager:
 	.mmap_beg resd 1
 	.mmap_end resd 1
 	.first_entry resd 1
+	.last_entry resd 1
 	.free_memory resq 1

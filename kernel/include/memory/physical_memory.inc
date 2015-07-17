@@ -19,7 +19,8 @@ interface_close
 
 DefineFunction InitialiseMemoryManager, 2
 DefineFunction IsFreeMemoryRange, 2
-DefineFunction BlockFreeMemoryRange, 3
+DefineFunction BlockFreeMemoryRange, 2
+DefineFunction AllocateMemory, 2
 
 %define MEM_PAGE_SIZE 0x10000
 %define MEM_PAGE_MASK 0x0FFFF

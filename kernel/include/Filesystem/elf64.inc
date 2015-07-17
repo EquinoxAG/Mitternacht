@@ -35,4 +35,4 @@ struc programmheader
 	.alignment resq 1
 endstruc 
 
-%define HeaderSize 56
+	%define HeaderSize 56

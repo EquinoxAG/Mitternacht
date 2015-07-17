@@ -1,1 +1,1 @@
-qemu-system-x86_64 -hda ./bin/bootloader.bin -smp 4 -monitor stdio
+qemu-system-x86_64 -hda ./bin/bootloader.bin -smp 4 -monitor stdio -m 256M
