@@ -1,0 +1,3 @@
+su
+qemu-system-x86_64 -hda /dev/sdb -smp 4 -monitor stdio -m 256M
+exit

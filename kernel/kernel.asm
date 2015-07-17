@@ -3,7 +3,7 @@ INCLUDE "boot/multiboot.inc"
 INCLUDE "graphics/vga_driver.inc"
 INCLUDE "memory/physical_memory.inc"
 INCLUDE "memory/virtual_memory.inc"
-
+%include "string/string.inc"
 
 ;The main function takes one argument
 global kernelMain
@@ -25,11 +25,19 @@ kernelMain:
 
 ;	secure_call IsFreeMemoryRange( 0x0, 0x1000)
 	secure_call InitialiseVirtualMemory(BOOTUP_PML4_ADDR)
-	secure_call AllocateMemory( 0x80000000, PAGE_READ_WRITE_EXECUTE )
-	mov dword[ rax ], 100
+
+	ReserveStackSpace MyYolo, KString
+	UpdateStackPtr
+	secure_call MyYolo.append_str({0x0A,"Hallo World"})
+	secure_call MyYolo.append_int( 1000 );
+	secure_call MyYolo.append_str({0x0A,"Hex printing: "});
+	secure_call MyYolo.append_inth( 0xFF20 );
+	secure_call MyYolo.c_str()
+	secure_call DrawString(rax)
+
+
 
 	jmp $
-
 	DestroyStack kernelSt
 	jmp $
 
