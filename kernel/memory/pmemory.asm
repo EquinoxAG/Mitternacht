@@ -1,6 +1,8 @@
 %include "Morgenroetev1.inc"
 INCLUDE "memory/physical_memory.inc"
 INCLUDE "memory/virtual_memory.inc"
+INCLUDE "string/string.inc"
+INCLUDE "graphics/vga_driver.inc"
 
 extern kernel_start
 extern kernel_end
@@ -9,6 +11,9 @@ extern kernel_end
 ;Initialises the memory bitmap as well as reserving the reserved areas of memory
 ;---------------------------------------------------------------------------------
 DeclareFunction InitialiseMemoryManager( memoryMap, memoryMapLength )
+	mov qword[ physical_memory_manager.e820_addr ], Arg_memoryMap
+	mov qword[ physical_memory_manager.e820_size ], Arg_memoryMapLength
+
 	mov rcx, Arg_memoryMapLength			;Load the length of the E820 memory map
 	xor rsi, rsi					;Maximal memory address is zero at the beginning
 	mov r8, rcx					;Backup the length of the E820 memory map
@@ -102,8 +107,11 @@ DeclareFunction InitialiseMemoryManager( memoryMap, memoryMapLength )
 			jmp .selectNextBlock
 	.done:
 
-		mov edi, dword[ physical_memory_manager.mmap_beg ]
-		mov esi, dword[ physical_memory_manager.first_entry ]
+
+		;Block the first memory page, it contains the BIOS interrupt table as well as some important data
+		xor edi, edi
+		mov esi, MEM_PAGE_SIZE
+		secure_call BlockFreeMemoryRange( rdi, rsi )
 
 		;The memory map is set up by now and should work properly, therefore block important memory ranges
 		mov edi, kernel_start
@@ -117,12 +125,64 @@ DeclareFunction InitialiseMemoryManager( memoryMap, memoryMapLength )
 		secure_call BlockFreeMemoryRange( rdi, rsi)
 EndFunction
 
+;Prints the E820 memory Map given from the bootloader
+DeclareFunction PrintMemoryMapE820()
+
+	;Load the address of the memory map and the size
+	mov ebx, dword[ physical_memory_manager.e820_addr ]
+	mov r15d, dword[ physical_memory_manager.e820_size ]
+
+	;Make space for the string buffer
+	sub rsp, 2000
+	mov rdx, rsp
+
+	;Create a object string with the buffer pointing to the stack space created before, maximum 2000 characters allowed
+	ReserveStackSpace HeaderStr, KString, rdx, 2000
+	UpdateStackPtr
+
+	secure_call HeaderStr.append_str( {CONSOLE_CHANGEFG(COLOR_WHITE),0x0A, "Printing E820: memory map!" })
+
+	.PrintMap:
+		secure_call HeaderStr.append_str( {0x0A,"Base Address: ",CONSOLE_CHANGEFG(COLOR_RED)} )
+
+		mov_ts rax, qword[ (rbx->MemoryMap).base_address ]
+		secure_call HeaderStr.append_inth( rax )
+
+		secure_call HeaderStr.append_str( {CONSOLE_CHANGEFG(COLOR_WHITE)," | Length: ",CONSOLE_CHANGEFG(COLOR_RED)} )
+		mov_ts rax, qword[ (rbx->MemoryMap).length ]
+		secure_call HeaderStr.append_inth( rax )
+
+		mov_ts eax, dword[ (rbx->MemoryMap).type ]
+		cmp eax, 1
+		jnz .reserved
+
+		secure_call HeaderStr.append_str( {CONSOLE_CHANGEFG(COLOR_WHITE)," | Free Memory"} )
+
+		jmp .selectNext
+		.reserved:
+			secure_call HeaderStr.append_str( {CONSOLE_CHANGEFG(COLOR_WHITE)," | Reserved Memory"} )
+
+		.selectNext:
+
+		sub r15d, dword[ rbx + MemoryMap.entry_length]
+		add ebx, dword[ rbx + MemoryMap.entry_length ]
+		add ebx, 4
+		sub r15d, 4
+		ja .PrintMap
+
+
+	secure_call HeaderStr.c_str()
+	secure_call DrawString( rax )
+EndFunction
+
 
 DeclareFunction AllocateMemory( size, flags )
 	ReserveStackSpace MemFlags, qword
 	ReserveStackSpace VMemAddr, qword
+	ReserveStackSpace rbx_backup, qword
 	UpdateStackPtr
 
+	mov_ts qword[ rbx_backup ], rbx
 	mov r15, Arg_size
 	mov_ts qword[ MemFlags ], Arg_flags
 
@@ -174,6 +234,7 @@ DeclareFunction AllocateMemory( size, flags )
 
 	.done:
 		mov_ts rax, qword[ VMemAddr ]
+		mov_ts rbx, qword[ rbx_backup ]
 EndFunction
 
 ;Checks if the specified memory range is completely free
@@ -234,6 +295,8 @@ Msg_blocked_mem db 'Unusable memory',0
 ImportAllMgrFunctions
 section .bss
 physical_memory_manager:
+	.e820_addr resd 1
+	.e820_size resd 1
 	.mmap_beg resd 1
 	.mmap_end resd 1
 	.first_entry resd 1

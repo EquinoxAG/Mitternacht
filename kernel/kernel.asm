@@ -3,6 +3,7 @@ INCLUDE "boot/multiboot.inc"
 INCLUDE "graphics/vga_driver.inc"
 INCLUDE "memory/physical_memory.inc"
 INCLUDE "memory/virtual_memory.inc"
+INCLUDE "heap/heap.inc"
 %include "string/string.inc"
 
 ;The main function takes one argument
@@ -16,33 +17,34 @@ kernelMain:
 	secure_call SetBackgroundAttribute( COLOR_BLACK )
 	secure_call ClearScreen()
 	secure_call SetForegroundAttribute( COLOR_WHITE )
-	secure_call DrawString(DrawStr)
 
 	mov ebx, dword[ MbrStrucAddr ]
 	mov edi, dword[ ebx + multiboot.mmap_addr ]
 	mov esi, dword[ ebx + multiboot.mmap_length ]
 	secure_call InitialiseMemoryManager( rdi, rsi )
 
-;	secure_call IsFreeMemoryRange( 0x0, 0x1000)
+
 	secure_call InitialiseVirtualMemory(BOOTUP_PML4_ADDR)
 
-	ReserveStackSpace MyYolo, KString
-	UpdateStackPtr
-	secure_call MyYolo.append_str({0x0A,"Hallo World"})
-	secure_call MyYolo.append_int( 1000 );
-	secure_call MyYolo.append_str({0x0A,"Hex printing: "});
-	secure_call MyYolo.append_inth( 0xFF20 );
-	secure_call MyYolo.c_str()
-	secure_call DrawString(rax)
+	secure_call PrintMemoryMapE820()
 
+	secure_call InitialiseHeap( 0x200000 )
+	secure_call malloc( 100, 0 )
 
+	mov ebx, eax
 
+	secure_call malloc( 200, "Unused shit")
+
+	secure_call free(rbx)
+	secure_call PrintMemoryMap()
 	jmp $
+
+
 	DestroyStack kernelSt
 	jmp $
 
 
-DrawStr db 'Hallo',0x0A,'Welt from kernel: Very very very long long long string in your neighbarhood, even longer string',0
+DrawStr db 'Hallo Master File',0x0A,'Welt from kernel',CONSOLE_CHANGEFG(COLOR_RED),'String red background',0
 
 section .bss
 MbrStrucAddr resq 0

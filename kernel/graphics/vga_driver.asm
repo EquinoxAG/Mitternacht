@@ -189,9 +189,17 @@ DeclareFunction DrawString( str_addr )
 		test al, al
 		jz .drawForeground
 
-		cmp al, 0x0A
+		cmp al, CONSOLE_CHANGE_BACKGROUND_CHAR
+		jz .changeBG
+		
+		cmp al, CONSOLE_CHANGE_FOREGROUND_CHAR
+		jz .changeFG
+
+		cmp al, CONSOLE_LINEBREAK
 		jnz .contBackDraw
 
+
+		
 		sub r9d, r10d				;Select the current begin of the character draw line
 		add r9d, 720				;Select the next character line
 		xor r10d, r10d				;Reset the character draw count in the current line
@@ -217,6 +225,18 @@ DeclareFunction DrawString( str_addr )
 			xor r10d, r10d			;0 Bytes are written in this line
 			add r9d, 630			;Calculate the next address of the first pixel, but in the next character line
 			jmp .DrawBackgroundOuterLoop
+	.changeBG:
+		add rsi, 1
+		mov r8d, dword[ vga_driver_settings.predrawn_backgrounds ]
+		movzx ebx, byte[ rsi ]
+		add rsi, 1
+		add r8d, ebx
+
+		mov al, byte[ r8d ]
+		jmp .DrawBackgroundOuterLoop
+	.changeFG:
+		add rsi, 2
+		jmp .DrawBackgroundOuterLoop
 
 	.drawForeground:
 		mov rsi, r12				;background drawing is finished, restore registers
@@ -233,6 +253,12 @@ DeclareFunction DrawString( str_addr )
 			test al, al
 			jz .done
 
+			cmp al, CONSOLE_CHANGE_BACKGROUND_CHAR
+			jz .changeBGColor
+
+			cmp al, CONSOLE_CHANGE_FOREGROUND_CHAR
+			jz .changeFGColor
+
 			cmp al, 0x0A
 			jnz .contDrawFore
 
@@ -242,7 +268,6 @@ DeclareFunction DrawString( str_addr )
 			add rsi, 1
 			jmp .drawForegroundOuterLoop
 		.contDrawFore:
-
 			mov r8d, Font8X8BIOS				;Load Font address
 			add rsi, 1
 			shl eax, 3					;Calculate character offset in Font
@@ -267,7 +292,21 @@ DeclareFunction DrawString( str_addr )
 				xor r10d, r10d				;Reset chars written
 				add r9d, 630				;initiate linebreak
 				jmp .drawForegroundOuterLoop
+		.changeBGColor:
+			add rsi, 1
+			mov al, byte[ rsi ]
+			secure_call SetBackgroundAttribute( rax )
+			setWritePlanes byte[ vga_driver_settings.xored_attr ]
+			add rsi, 1
+			jmp .drawForegroundOuterLoop
 
+		.changeFGColor:
+			add rsi, 1
+			mov al, byte[ rsi ]
+			secure_call SetForegroundAttribute( rax )
+			setWritePlanes byte[ vga_driver_settings.xored_attr ]
+			add rsi, 1
+			jmp .drawForegroundOuterLoop
 	.done:
 		mov dword[ vga_driver_settings.chars_written ], r10d	;Save the end status of the registers
 		mov dword[ vga_driver_settings.curr_write_addr ], r9d

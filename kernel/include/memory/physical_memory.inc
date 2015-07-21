@@ -21,6 +21,7 @@ DefineFunction InitialiseMemoryManager, 2
 DefineFunction IsFreeMemoryRange, 2
 DefineFunction BlockFreeMemoryRange, 2
 DefineFunction AllocateMemory, 2
+DefineFunction PrintMemoryMapE820, 0
 
 %define MEM_PAGE_SIZE 0x10000
 %define MEM_PAGE_MASK 0x0FFFF

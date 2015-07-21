@@ -2,116 +2,160 @@
 INCLUDE "string/string.inc"
 
 
-DeclareFunction KString::StrConstructor()
-	mov_ts dword[ (Arg_this->KString).length ], 0
-	mov_ts byte[ (Arg_this->KString).data ], 0
+;Setzt 
+DeclareFunction KString::StrConstructor(buffer_ptr, buffer_size)
+	mov_ts qword[ (Arg_this->KString).length ], 0
+	mov_ts qword[ (Arg_this->KString).str_ptr ], Arg_buffer_ptr
+	mov_ts qword[ (Arg_this->KString).max_strlen ], Arg_buffer_size
 EndFunction
 
 DeclareFunction KString::c_str()
-	mov rax, rdi
-	add rax, KString.data
+	mov_ts rax, qword[ (Arg_this->KString).str_ptr ]
 EndFunction
 
-
-DeclareFunction KString::append_str( app_str )
-	mov rdx, Arg_this
-	mov rcx, qword[ rdi ]
-	add rdi, KString.data
-	add rdi, rcx
-
-	.copy_str:
-		mov al, byte[ rsi ]
-		test al, al
-		jz .done
-
-		mov byte[ rdi ], al
-		add rsi, 1
-		add rdi, 1
-
-		add rcx, 1
-		cmp rcx, (KString_size-9)
-		js .copy_str
-		xor al, al
-	.done:
-		mov byte[ rdi ], al
-		mov qword[ rdx ], rcx
-EndFunction
-
-DeclareFunction KString::append_int( ival )
-	sub rsp, 40
-	mov rax, Arg_ival
-	mov r8, Arg_this
-	
-	mov rdi, rsp
-	add rdi, 38
+DeclareFunction KString::clear()
+	mov_ts qword[ (Arg_this->KString).length ], 0
+	mov_ts rdi, qword[ (Arg_this->KString).str_ptr ]
 	mov byte[ rdi ], 0
-	sub rdi, 1
+EndFunction
 
-	mov rsi, r8
-	mov ebx, 10
+;rdi = this
+DeclareFunction KString::nline()
+	mov_ts edx, dword[ (Arg_this->KString).length ]
+	mov_ts rsi, qword[ (Arg_this->KString).str_ptr ]
+	mov_ts ecx, dword[ (Arg_this->KString).max_strlen ]
+	add rsi, rdx
+
+	sub ecx, 1
+	cmp ecx, edx
+	jz .done
+
+	mov byte[ rsi ], 0x0A	;New line
+	mov byte[ rsi + 1 ], 0
+
+	add edx, 1
+
+
+	.done:
+		mov_ts dword[ (Arg_this->KString).length ], edx
+EndFunction
+
+;rdi = this ptr, rsi = ival
+DeclareFunction KString::append_int( ival )
+	mov r8, Arg_this
+
+	mov rax, Arg_ival
+
+	mov rsi, rsp
+	sub rsi, 1
+	sub rsp, 40	;Make 40 bytes place
+	mov rbx, 10
+
 	xor edx, edx
-	add rsi, KString.data
-	
-	mov ecx, 1	; 0 will always get transfered
+	mov byte[ rsi ], 0
+	sub rsi, 1
 
-	.LoopedOutput:
+	.MakeStr:
 		div rbx
 		add dl, 48
-		mov byte[ rdi ], dl
-		sub rdi, 1
-		add ecx, 1
-		xor rdx, rdx
+		mov byte[ rsi ], dl
+		sub rsi, 1
+		xor edx, edx
 		test rax, rax
-		jnz .LoopedOutput
+		jnz .MakeStr
 
-		add rdi, 1
-		add rsi, qword[ r8 + KString.length ]
-		xchg rdi, rsi
-		sub ecx, 1
-		add qword[ r8 + KString.length ], rcx
-		add ecx, 1
-		rep movsb
-	
+	add rsi, 1
+	secure_call (r8->KString).append_str( rsi )
 	add rsp, 40
-EndFunction
-
-DeclareFunction KString::nline()
-	
-
 EndFunction
 
 DeclareFunction KString::append_inth( ival )
 	mov rax, Arg_ival
-	mov rdx, Arg_ival
-	mov rsi, Arg_this
-	mov r8, Arg_this
-	add rsi, KString.data
-	add rsi, qword[ r8 + KString.length ]
+	mov r9, Arg_ival
+	mov_ts rdx, qword[ (Arg_this->KString).max_strlen ]
+	mov_ts r8, qword[ (Arg_this->KString).length ]
+	mov_ts rsi, qword[ (Arg_this->KString).str_ptr ]
+
+	add rsi, r8
+
+	add r8, 1
+	cmp r8d, edx
+	jae .done
+
 	mov byte[ rsi ], '0'
-	mov byte[ rsi +1 ], 'x'
-	add rsi, 2
+	
+	add r8, 1
+	cmp r8d, edx
+	jae .done
+
+	add rsi, 1
+	mov byte[ rsi ], 'x'
+
+	add r8, 1
 
 	mov cl, 60
-	.stLoop:
+
+	.ParseString:
+		cmp r8d, edx
+		jae .done
+
 		shr rax, cl
+
+		add rsi, 1
+
 		and al, 0x0F
 
 		cmp al, 10
 		jae .hex
 
 		add al, 48
-		jmp .cont
+		jmp .contParse
 	.hex:
 		add al, 55
-
-	.cont:
+	.contParse:
 		mov byte[ rsi ], al
-		add rsi, 1
-		mov rax, rdx
-		sub cl, 4
-		jns .stLoop
 	
+		add r8, 1
+		mov rax, r9
+		sub cl, 4
+		jns .ParseString
+	.done:
+		sub r8, 1
+		add rsi, 1
 		mov byte[ rsi ], 0
+		mov_ts qword[ (rdi->KString).length ], r8
 EndFunction
+
+;rdi = this, rsi = app_str because calling convention will be converted to STDCALL_GCC64 
+DeclareFunction KString::append_str( app_str )
+	mov_ts rax, qword[ (rdi->KString).str_ptr ]
+	mov_ts r8d, dword[ (rdi->KString).length ]
+	mov_ts ecx, dword[ (rdi->KString).max_strlen ]
+	add rax, r8
+	sub ecx, 1
+
+
+	.copy_str:
+		mov dl, byte[ rsi ]
+		mov byte[ rax ], dl
+
+
+		test dl, dl
+		jz .done
+		
+		add r8, 1
+		cmp r8d, ecx
+		jz .done
+
+		add rsi, 1
+		add rax, 1
+		jmp .copy_str
+
+
+	.done:
+		mov byte[ rax ], 0
+		mov_ts dword[ (rdi->KString).length ], r8d
+EndFunction
+
 
 ImportAllMgrFunctions
