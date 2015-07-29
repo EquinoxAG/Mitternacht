@@ -5,9 +5,12 @@ INCLUDE "memory/virtual_memory.inc"
 INCLUDE "string/string.inc"
 INCLUDE "graphics/vga_driver.inc"
 
+
+;Initalises the Heap with the specified size
 DeclareFunction InitialiseHeap( size )
 	mov rbx, Arg_size
 
+	;Align the page on the physical page size boundary
 	test ebx, MEM_PAGE_MASK
 	jz .alignedPage
 
@@ -16,151 +19,425 @@ DeclareFunction InitialiseHeap( size )
 	
 	.alignedPage:
 
+	;Now after the size has been aligned save the real size of the heap
 	mov dword[ HeapSettings.size ], ebx
 
+	;Allocate the memory for the heap, use Write Thorugh caching as cache type
 	secure_call AllocateMemory( rbx, PAGE_READ_WRITE|PAGE_CACHE_TYPE_WT )
+
+	;rax = holds the base address of the heap
 	mov dword[ HeapSettings.PhysicalAddr ], eax
+	;Calculate in edi the end address of the heap
 	mov edi, eax
+	;Initialise the first and only Memory Block Header
 	mov dword[ eax + HeapInfoBlock.next ], 0
+
+	;edi = max address of the heap
 	add edi, ebx
 
-	sub ebx, HeapInfoBlock_size
+	;ebx = size of the heap allocatable memory
+	sub ebx, (HeapInfoBlock_size)
 
+	;Initialise the only memory block header 
 	mov dword[ eax + HeapInfoBlock.size ], ebx
-	mov dword[ eax + HeapInfoBlock.alloc_reason ], FREE_BLOCK
+	mov dword[ eax + HeapInfoBlock.alloc_reason ], BLOCK_FREE
 
+	;Save the max address of the heap
 	mov dword[ HeapSettings.PhysicalAddrEnd ], edi
 
+	;Save the first entry address!
 	mov dword[ HeapSettings.first_entry ], eax
 EndFunction
 
-DeclareFunction malloc( size, DescStr )
-	mov r8, Arg_DescStr
-	mov rcx, Arg_size
+
+DeclareFunction malloc( size, string_addr, alignment )
+	mov r12, rbx
+	
+	xor r15d, r15d
+	mov eax, 1
+	.BuildMask:
+		test Arg_alignment, rax
+		jnz .BuildMask_end
+
+		or r15d, eax
+		shl eax, 1
+		jmp .BuildMask
+
+	.BuildMask_end:
+		not r15
+
+	mov r8, Arg_string_addr
+	mov r9, Arg_size
+
 	mov edi, dword[ HeapSettings.first_entry ]
-	add ecx, HeapInfoBlock_size
 
+	add r9d, HeapInfoBlock_size
+	mov r10d, r9d
 	.StartTraverse:
-		mov edx, dword[ edi + HeapInfoBlock.size ]
+		mov r9d, r10d
+		mov eax, dword[ edi + HeapInfoBlock.size ]
+		mov ebx, edi
+		add ebx, eax	;ebx = end address of the memory
+		add ebx, HeapInfoBlock_size
+		mov ecx, ebx
+		sub ecx, r9d	;ecx = start address of the info block
+		and rcx, r15	;ecx = aligned start address of the info block
+		sub ecx, HeapInfoBlock_size;ecx = aligned start address of the memory block
+		sub ebx, ecx	; ebx = aligned size
 
-		cmp edx, ecx
-		jns .block_access
 
-	.loadNextBlock:
+		mov r9d, ebx
+
+
+
+		cmp eax, r9d
+		jns .lock_block
+
+	.SelectNextBlock:
 		mov edi, dword[ edi + HeapInfoBlock.next ]
 		test edi, edi
 		jnz .StartTraverse
-		jmp FatalError
 
-	.block_access:
-		mov eax, edx
-	.block_access_no_eax:
-		sub edx, ecx
-		lock cmpxchg dword[ edi + HeapInfoBlock.size ], edx
-		jz .found_block
-		;okay failed to lock the block, eax holds the new size of the block
-		;Still big enough?
-		cmp eax, ecx
-		js .loadNextBlock
-		;Okay block is still big enough
-		mov edx, eax
-		;Therefore try the lock again!
-		jmp .block_access_no_eax
+		jmp $
 
-;Locked the block, just split it now
-	.found_block:
-		;Calculate the end of the memory block
-		add edi, edx
-		add edi, HeapInfoBlock_size
+	.lock_block:
+		mov ebx, eax
+		;edx:eax = comparator value
+		xor edx, edx
+		;ecx:ebx = new value
+		xor ecx, ecx
+		sub ebx, r9d	;ebx = new size value
 
-		sub ecx, HeapInfoBlock_size
+	.try_to_lock:
+		lock cmpxchg8b [ edi + HeapInfoBlock.size ]
+		jz .createTheBlock
+
+		;okay comparision did fail. If the allocation_reason if above 256 it is a permanently locked block
+		;Else try the next lock
+
+		cmp ecx, 256	;Permanently locked block maybe because of merging or things like that
+		mov eax, ebx
+		jae .SelectNextBlock
+
+		;If the block is still big enough try again
+		cmp ebx, r9d
+		jns .lock_block
+		jmp .SelectNextBlock
+
+	.createTheBlock:
+		mov eax, edi
+		sub r9d, HeapInfoBlock_size
+		add edi, ebx
 
 		mov esi, DefaultMemUsage
+		add edi, HeapInfoBlock_size
 		test r8d, r8d
+		mov dword[ edi + HeapInfoBlockReserved.alloc_reason ], BLOCK_UPDATE
 		cmovz r8d, esi
+		mov ecx, ebx
+		mov dword[ edi + HeapInfoBlockReserved.size ], r9d
+		mov dword[ edi + HeapInfoBlockReserved.last_ptr ], eax
+		mov r11d, edi
+		mov dword[ edi + HeapInfoBlockReserved.alloc_reason ], r8d
 
-		mov dword[ edi + HeapInfoBlock.alloc_reason ], r8d	;Save the decription for what the memory will be use
-		mov eax, edi
-		mov dword[ edi + HeapInfoBlock.size ], ecx
-		add eax, HeapInfoBlock_size
-EndFunction
+		add edi, r9d
+		add edi, HeapInfoBlock_size
+		;edi = next block in line
+		cmp edi, dword[ HeapSettings.PhysicalAddrEnd ]
+		jz .done
 
-DeclareFunction PrintMemoryMap()
-	sub rsp, 2000
-	mov rdx, rsp
-	ReserveStackSpace MemMapStr, KString, rdx, 2000
-	UpdateStackPtr
+		cmp dword[ edi + HeapInfoBlockReserved.alloc_reason ], BLOCK_RESERVED
+		js .done
 
-	xor r15, r15
-	mov ebx, dword[ HeapSettings.PhysicalAddr ]
-	secure_call MemMapStr.append_str( {0x0A,"Memory map of the heap!"} )
-	.PrintMemMap:
-		secure_call MemMapStr.append_str( {CONSOLE_CHANGEFG(COLOR_WHITE),0x0A,"Base addr: ", CONSOLE_CHANGEFG(COLOR_BROWN)} )
-		mov eax, ebx
-		add eax, HeapInfoBlock_size
-		secure_call MemMapStr.append_inth( rax )
-		secure_call MemMapStr.append_str( {CONSOLE_CHANGEFG( COLOR_WHITE), " | Length: ", CONSOLE_CHANGEFG(COLOR_BROWN)})
-		mov eax, dword[ ebx + HeapInfoBlock.size ]
-		secure_call MemMapStr.append_inth( rax )
+		mov dword[ edi + HeapInfoBlockReserved.last_ptr ], r11d
 		
-		mov eax, dword[ ebx + HeapInfoBlock.alloc_reason ]
-		test eax, eax
-		jnz .str
-		
-		secure_call MemMapStr.append_str( {CONSOLE_CHANGEFG(COLOR_WHITE), " | Usage: ", CONSOLE_CHANGEFG(COLOR_BROWN),"Free memory"})
-		jmp .selectNext
-
-		.str:
-			push rax
-			secure_call MemMapStr.append_str({CONSOLE_CHANGEFG(COLOR_WHITE), " | Usage: ", CONSOLE_CHANGEFG(COLOR_BROWN)})
-			pop rax
-			secure_call MemMapStr.append_str( rax )
-
-	
-		.selectNext:
-			add ebx, dword[ ebx + HeapInfoBlock.size ]
-			add ebx, HeapInfoBlock_size
-
-			cmp ebx, dword[ HeapSettings.PhysicalAddrEnd ]
-			jnz .PrintMemMap
-
-		secure_call MemMapStr.c_str()
-		secure_call DrawString(rax)
-EndFunction
-
-FatalError:
-	jmp $
-
-DeclareFunction free(addr)
-	sub Arg_addr, HeapInfoBlock_size
-	mov dword[ Arg_addr + HeapInfoBlock.alloc_reason ], 0
-
-	mov esi, dword[ HeapSettings.first_entry ]
-
-	.TryAgain:
-		mov eax, esi
-		mov dword[ Arg_addr + HeapInfoBlock.next ], eax
-		mov rsi, Arg_addr
-
-		lock cmpxchg dword[ HeapSettings.first_entry ], esi
-		jnz .TryAgain
+	.done:
+		mov eax, r11d
+		add eax, HeapInfoBlockReserved_size
+		mov rbx, r12
 
 EndFunction
 
-CleanupHeapMutex dd 0
-CleaFreeList dd 0
-DeclareFunction CleanupHeap()
-	mov al, 1
-	xchg byte[ CleanupHeap ], al
-	test al, al
-	jnz .end
+
+DeclareFunction malloc( size, string_addr )
+	mov r12, rbx
+	mov r8, Arg_string_addr
+	mov r9, Arg_size
 
 	mov edi, dword[ HeapSettings.first_entry ]
 
-	.end:
+	add r9d, HeapInfoBlock_size
+	.StartTraverse:
+		mov eax, dword[ edi + HeapInfoBlock.size ]
+
+		cmp eax, r9d
+		jns .lock_block
+
+	.SelectNextBlock:
+		mov edi, dword[ edi + HeapInfoBlock.next ]
+		test edi, edi
+		jnz .StartTraverse
+
+		jmp $
+
+	.lock_block:
+		mov ebx, eax
+		;edx:eax = comparator value
+		xor edx, edx
+		;ecx:ebx = new value
+		xor ecx, ecx
+		sub ebx, r9d	;ebx = new size value
+
+	.try_to_lock:
+		lock cmpxchg8b [ edi + HeapInfoBlock.size ]
+		jz .createTheBlock
+
+		;okay comparision did fail. If the allocation_reason if above 256 it is a permanently locked block
+		;Else try the next lock
+
+		cmp ecx, 256	;Permanently locked block maybe because of merging or things like that
+		mov eax, ebx
+		jae .SelectNextBlock
+
+		;If the block is still big enough try again
+		cmp ebx, r9d
+		jns .lock_block
+		jmp .SelectNextBlock
+
+	.createTheBlock:
+		mov eax, edi
+		sub r9d, HeapInfoBlock_size
+		add edi, ebx
+
+		mov esi, DefaultMemUsage
+		add edi, HeapInfoBlock_size
+		test r8d, r8d
+		mov dword[ edi + HeapInfoBlockReserved.alloc_reason ], BLOCK_UPDATE
+		cmovz r8d, esi
+		mov ecx, ebx
+		mov dword[ edi + HeapInfoBlockReserved.size ], r9d
+		mov dword[ edi + HeapInfoBlockReserved.last_ptr ], eax
+		mov r11d, edi
+		mov dword[ edi + HeapInfoBlockReserved.alloc_reason ], r8d
+
+		add edi, r9d
+		add edi, HeapInfoBlock_size
+		;edi = next block in line
+		cmp edi, dword[ HeapSettings.PhysicalAddrEnd ]
+		jz .done
+
+		cmp dword[ edi + HeapInfoBlockReserved.alloc_reason ], BLOCK_RESERVED
+		js .done
+
+		mov dword[ edi + HeapInfoBlockReserved.last_ptr ], r11d
+		
+	.done:
+		mov eax, r11d
+		add eax, HeapInfoBlockReserved_size
+		mov rbx, r12
 EndFunction
 
-DefaultMemUsage db 'Not specified',0
+
+DeclareFunction PrintFreeMap()
+	mov ebx, dword[ HeapSettings.first_entry ]
+	ReserveStackSpace HeaderStr, KString1024
+	UpdateStackPtr
+
+	secure_call HeaderStr.append_str({CONSOLE_CHANGEFG(COLOR_YELLOW),0x0A,"Printing Heap free memory map"})
+
+	.StartTraverse:
+		secure_call HeaderStr.append_str({CONSOLE_CHANGEFG(COLOR_YELLOW),0x0A, "Base addr: ", CONSOLE_CHANGEFG(COLOR_MAGENTA)})
+		mov eax, ebx
+		add eax, HeapInfoBlock_size
+		secure_call HeaderStr.append_inth( rax )
+		secure_call HeaderStr.append_str({CONSOLE_CHANGEFG(COLOR_YELLOW)," | Length: ", CONSOLE_CHANGEFG(COLOR_MAGENTA)})
+		mov eax, dword[ ebx + HeapInfoBlock.size ]
+		secure_call HeaderStr.append_inth( rax )
+		secure_call HeaderStr.append_str({CONSOLE_CHANGEFG(COLOR_YELLOW), " | a_r: ", CONSOLE_CHANGEFG(COLOR_MAGENTA)})
+		mov eax, dword[ ebx + HeapInfoBlock.alloc_reason ]
+		secure_call HeaderStr.append_inth( rax )
+
+		mov ebx, dword[ ebx + HeapInfoBlock.next ]
+		test ebx, ebx
+		jnz .StartTraverse
+
+		secure_call HeaderStr.c_str()
+		secure_call DrawString( rax )
+EndFunction
+
+DeclareFunction PrintMemoryMap()
+	mov ebx, dword[ HeapSettings.PhysicalAddr ]
+
+	ReserveStackSpace HeaderStr, KString1024
+	UpdateStackPtr
+
+	secure_call HeaderStr.append_str({CONSOLE_CHANGEFG(COLOR_WHITE),0x0A,"Printing Heap complete memory map"})
+
+	.StartTraverse:
+		secure_call HeaderStr.append_str({0x0A,CONSOLE_CHANGEFG(COLOR_WHITE),"Base addr: ", CONSOLE_CHANGEFG(COLOR_BROWN)})
+		mov eax, ebx
+		add eax, HeapInfoBlock_size
+		secure_call HeaderStr.append_inth( rax )
+		secure_call HeaderStr.append_str({CONSOLE_CHANGEFG(COLOR_WHITE)," | Length: ", CONSOLE_CHANGEFG(COLOR_BROWN)})
+		mov eax, dword[ ebx + HeapInfoBlock.size ]
+		secure_call HeaderStr.append_inth( rax )
+
+		secure_call HeaderStr.append_str({CONSOLE_CHANGEFG(COLOR_WHITE), " | Usage: ", CONSOLE_CHANGEFG(COLOR_BROWN)})
+
+		mov eax, dword[ ebx + HeapInfoBlock.alloc_reason ]
+
+		cmp eax, BLOCK_USERDEFINED
+		ja .userdef
+
+		secure_call HeaderStr.append_str( "Free memory" )
+		jmp .next
+
+		.userdef:
+			secure_call HeaderStr.append_str( rax )
+
+		.next:
+			add ebx, dword[ ebx + HeapInfoBlock.size ]
+			add ebx, HeapInfoBlock_size
+			cmp ebx, dword[ HeapSettings.PhysicalAddrEnd ]
+			jnz .StartTraverse
+
+		secure_call HeaderStr.c_str()
+		secure_call DrawString( rax )
+EndFunction
+
+
+;esi = addr, ebx = value to write
+LockThing:
+	xor eax, eax
+	
+.no_eax:
+	mov edx, ebx
+	lock cmpxchg dword[ esi + HeapInfoBlockReserved.alloc_reason ], edx
+	jz .done
+	
+	cmp edx, BLOCK_RESERVED
+	js .no_eax
+
+	stc
+	ret
+	.done:
+		clc
+		ret
+
+align 8
+UpdateLockerFree dq 0
+;edi = free addr
+DeclareFunction free(address)
+	mov r12, rbx
+	sub edi, HeapInfoBlock_size
+
+
+	cmp dword[ edi + HeapInfoBlockReserved.alloc_reason ], BLOCK_USERDEFINED
+	js .done
+
+
+	mov eax, edi
+	mov dword[ edi + HeapInfoBlockReserved.alloc_reason ], BLOCK_ON_MERGE
+	mov esi, dword[ edi + HeapInfoBlockReserved.last_ptr ]
+	mov r8d, dword[ edi + HeapInfoBlockReserved.size ]
+	sub eax, esi
+
+
+	;edx:eax = comparator value
+	xor edx, edx
+
+
+	;ecx:ebx = new val
+	mov ebx, eax
+	mov ecx, BLOCK_ON_MERGE
+	sub eax, HeapInfoBlock_size
+	add ebx, r8d
+	xor r9d, r9d
+
+	.NextLockLow:
+		lock cmpxchg8b [esi+HeapInfoBlockReserved.size ]
+		jz .unty_lower
+
+		test ecx, ecx
+		jnz .merge_upper
+
+		mov esi, dword[ edi + HeapInfoBlockReserved.last_ptr ]
+		mov ebx, r8d
+		mov ecx, BLOCK_ON_MERGE
+		sub eax, esi
+		add ebx, eax
+		sub eax, HeapInfoBlock_size
+		jmp .NextLockLow
+
+	.unty_lower:
+		mov r9d, 1	;No need to unty lower, next and last will be used to bring the block in the list
+		mov edi, esi
+	.merge_upper:
+		mov esi, edi
+		add esi, dword[ edi + HeapInfoBlockReserved.size ]
+		add esi, HeapInfoBlockReserved_size			;esi = address of next block
+		
+		cmp esi, dword[ HeapSettings.PhysicalAddrEnd ]
+		jz .bring_online
+
+		.try_lock_again:
+			;Block must be free
+			mov ebx, BLOCK_ON_MERGE_DESTRUCTIVE
+			call LockThing
+			jnc .unty_upper		;Lock succeed
+
+			mov dword[ esi + HeapInfoBlockReserved.last_ptr ], esi
+			jmp .bring_online
+		.unty_upper:
+			mov eax, dword[ esi + HeapInfoBlockReserved.size ]
+			add eax, HeapInfoBlock_size
+			mov ebx, esi
+			add dword[ edi + HeapInfoBlock.size ], eax
+
+			
+			mov esi, HeapSettings.PhysicalAddrEnd
+			
+			.TryLock:
+				mov al, 1
+				xchg byte[ UpdateLockerFree ], al
+				test al, al
+				jnz .TryLock
+
+			.LoopedUnty:
+				cmp dword[ esi + HeapInfoBlock.next ], ebx
+				jz .EndUnty
+				
+				mov esi, dword[ esi + HeapInfoBlock.next ]
+				jmp .LoopedUnty
+
+
+			.EndUnty:
+				mov eax, dword[ ebx + HeapInfoBlock.next ]
+				mov dword[ esi + HeapInfoBlock.next ], eax
+				mov byte[ UpdateLockerFree ], 0
+				
+			
+	.bring_online:
+		test r9d, r9d
+		jnz .almost_done
+
+		mov esi, edi
+	.again:
+		mov eax, dword[ HeapSettings.first_entry ]
+		mov dword[ edi + HeapInfoBlock.next ], eax
+		lock cmpxchg dword[ HeapSettings.first_entry ], edi
+		jz .almost_done
+		mov edi, esi
+		jmp .again
+
+	.almost_done:
+		mov dword[ edi + HeapInfoBlock.alloc_reason ], BLOCK_FREE
+	.done:
+		mov rbx, r12
+EndFunction
+
+
+DefaultMemUsage db 'Reserved memory',0
 ImportAllMgrFunctions
 section .bss
 HeapSettings:
@@ -168,3 +445,4 @@ HeapSettings:
 	.PhysicalAddrEnd resd 1
 	.size resd 1
 	.first_entry resd 1
+

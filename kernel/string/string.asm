@@ -9,6 +9,14 @@ DeclareFunction KString::StrConstructor(buffer_ptr, buffer_size)
 	mov_ts qword[ (Arg_this->KString).max_strlen ], Arg_buffer_size
 EndFunction
 
+DeclareFunction KString1024::KStringConstStack()
+	mov rax, Arg_this
+	mov_ts qword[ (Arg_this->KString1024).length ], 0
+	add rax, KString1024.buffer
+	mov_ts qword[ (Arg_this->KString1024).max_strlen ], 1024
+	mov_ts qword[ (Arg_this->KString1024).str_ptr ], rax
+EndFunction
+
 DeclareFunction KString::c_str()
 	mov_ts rax, qword[ (Arg_this->KString).str_ptr ]
 EndFunction

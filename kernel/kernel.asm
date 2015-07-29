@@ -4,7 +4,8 @@ INCLUDE "graphics/vga_driver.inc"
 INCLUDE "memory/physical_memory.inc"
 INCLUDE "memory/virtual_memory.inc"
 INCLUDE "heap/heap.inc"
-%include "string/string.inc"
+INCLUDE "string/string.inc"
+INCLUDE "ata/ata_driver.inc"
 
 ;The main function takes one argument
 global kernelMain
@@ -26,19 +27,9 @@ kernelMain:
 
 	secure_call InitialiseVirtualMemory(BOOTUP_PML4_ADDR)
 
-	secure_call PrintMemoryMapE820()
-
 	secure_call InitialiseHeap( 0x200000 )
-	secure_call malloc( 100, 0 )
 
-	mov ebx, eax
-
-	secure_call malloc( 200, "Unused shit")
-
-	secure_call free(rbx)
-	secure_call PrintMemoryMap()
-	jmp $
-
+	secure_call InitialiseAtaDriver()
 
 	DestroyStack kernelSt
 	jmp $
