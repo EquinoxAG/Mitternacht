@@ -6,6 +6,8 @@ INCLUDE "memory/virtual_memory.inc"
 INCLUDE "heap/heap.inc"
 INCLUDE "string/string.inc"
 INCLUDE "ata/ata_driver.inc"
+INCLUDE "acpi/acpi.inc"
+INCLUDE "keyboard/keyboard.inc"
 
 ;The main function takes one argument
 global kernelMain
@@ -29,7 +31,7 @@ kernelMain:
 
 	secure_call InitialiseHeap( 0x200000 )
 
-	secure_call InitialiseAtaDriver()
+	secure_call InitialiseACPI()
 
 	DestroyStack kernelSt
 	jmp $

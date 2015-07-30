@@ -22,6 +22,8 @@ DefineFunction KString::StrConstructor, 2
 DefineFunction KString1024::KStringConstStack, 0
 DefineFunction KString::c_str,0
 DefineFunction KString::append_str, 1
+DefineFunction KString::str_cmp, 1
+DefineFunction KString::append_str, 2
 DefineFunction KString::append_int, 1
 DefineFunction KString::append_inth, 1
 DefineFunction KString::nline,0 

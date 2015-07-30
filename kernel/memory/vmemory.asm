@@ -188,11 +188,12 @@ DeclareFunction MapVirtToPhys( VirtMemAddr, PhysMemAddr, Length, Flags )
 	mov r13, Arg_Length
 	mov r12, Arg_Flags
 
+	and r15d, 0xFFFFF000
+	
 	test r14d, 0xFFF
-	jz .okayNoP
-		add r14d, 0x1000
-
-	.okayNoP:
+	jz .no_pad
+		add r13, 0x1000
+	.no_pad:
 		and r14d, 0xFFFFF000
 
 

@@ -415,6 +415,7 @@ DeclareFunction ClearScreen()
 		jnz .DrawBackground
 
 	mov dword[ vga_driver_settings.curr_write_addr ], eax
+	mov dword[ vga_driver_settings.chars_written ], 0
 	outportb VGA_GC_INDEX, 5
 	outportb VGA_GC_DATA, 0		;Select standard write mode 0 at the end
 EndFunction

@@ -8,7 +8,9 @@ all:
 	nasm -f elf64 -o ./bin/string.elf ./kernel/string/string.asm -i ./kernel/include/ -i ./kernel/include/Morgenroete/	
 	nasm -f elf64 -o ./bin/heap.elf ./kernel/heap/heap.asm -i ./kernel/include/ -i ./kernel/include/Morgenroete/
 	nasm -f elf64 -o ./bin/ata_driver.elf ./kernel/ata/ata_driver.asm -i ./kernel/include/ -i ./kernel/include/Morgenroete/
-	ld -z max-page-size=0x1000 -nostdlib -m elf_x86_64 -T ./kernel/link.ld -o ./bin/kernel.bin ./bin/prekernel.elf ./bin/kernel.elf ./bin/vga_driver.elf ./bin/pmemory_driver.elf ./bin/vmemory_driver.elf ./bin/string.elf ./bin/heap.elf ./bin/ata_driver.elf
+	nasm -f elf64 -o ./bin/acpi_driver.elf ./kernel/acpi/acpi.asm -i ./kernel/include/ -i ./kernel/include/Morgenroete/
+	nasm -f elf64 -o ./bin/keyboard.elf ./kernel/keyboard/keyboard.asm -i kernel/include/ -i ./kernel/include/Morgenroete/
+	ld -z max-page-size=0x1000 -nostdlib -m elf_x86_64 -T ./kernel/link.ld -o ./bin/kernel.bin ./bin/prekernel.elf ./bin/kernel.elf ./bin/vga_driver.elf ./bin/pmemory_driver.elf ./bin/vmemory_driver.elf ./bin/string.elf ./bin/heap.elf ./bin/ata_driver.elf ./bin/acpi_driver.elf ./bin/keyboard.elf
 	cat ./bin/kernel.bin >> ./bin/bootloader.bin
 	./appender ./bin/bootloader.bin ./bin/bootloader.bin
 
@@ -45,3 +47,5 @@ clean:
 	rm ./bin/string.elf
 	rm ./bin/heap.elf
 	rm ./bin/ata_driver.elf
+	rm ./bin/acpi_driver.elf
+	rm ./bin/keyboard.elf

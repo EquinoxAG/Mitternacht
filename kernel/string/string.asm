@@ -134,6 +134,60 @@ DeclareFunction KString::append_inth( ival )
 		mov_ts qword[ (rdi->KString).length ], r8
 EndFunction
 
+;rdi = this, rsi = app_str, 
+DeclareFunction KString::append_str( app_str, length )
+	push rbx
+	mov rcx, Arg_length
+	mov_ts rax, qword[ (rdi->KString).str_ptr ]
+	mov_ts r8d, dword[ (rdi->KString).length ]
+	mov_ts edx, dword[ (rdi->KString).max_strlen ]
+	add rax, r8
+	sub edx, 1
+
+	.copy_str:
+		mov bl, byte[ rsi ]
+		mov byte[ rax ], bl
+
+		test bl, bl
+		jz .done
+
+		add r8, 1
+		cmp r8d, edx
+		jz .done
+		
+		add rsi, 1
+		add rax, 1
+		sub ecx, 1
+		jnz .copy_str
+	.done:
+		mov byte[ rax ], 0
+		mov_ts dword[ (rdi->KString).length ], r8d
+		pop rbx
+EndFunction
+
+DeclareFunction KString::str_cmp( other_str )
+	
+	mov_ts rdi, qword[ (rdi->KString).str_ptr ]
+
+	xor rax, rax
+	.start_cmp:
+		mov al, byte[ rdi ]
+		cmp al, byte[ rsi ]
+		jnz .unequal
+
+		add rdi, 1
+		add rsi, 1
+
+		test al, al
+		jnz .start_cmp
+		jmp .done
+
+	.unequal:
+		mov al, 0xFF
+		stc
+	.done:
+EndFunction
+
 ;rdi = this, rsi = app_str because calling convention will be converted to STDCALL_GCC64 
 DeclareFunction KString::append_str( app_str )
 	mov_ts rax, qword[ (rdi->KString).str_ptr ]

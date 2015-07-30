@@ -243,10 +243,10 @@ DeclareFunction PrintFreeMap()
 	ReserveStackSpace HeaderStr, KString1024
 	UpdateStackPtr
 
-	secure_call HeaderStr.append_str({CONSOLE_CHANGEFG(COLOR_YELLOW),0x0A,"Printing Heap free memory map"})
+	secure_call HeaderStr.append_str({CONSOLE_CHANGEFG(COLOR_YELLOW),0x0A,"Printing Heap free memory map",0x0A})
 
 	.StartTraverse:
-		secure_call HeaderStr.append_str({CONSOLE_CHANGEFG(COLOR_YELLOW),0x0A, "Base addr: ", CONSOLE_CHANGEFG(COLOR_MAGENTA)})
+		secure_call HeaderStr.append_str({ CONSOLE_CHANGEFG(COLOR_YELLOW),"Base addr: ", CONSOLE_CHANGEFG(COLOR_MAGENTA)})
 		mov eax, ebx
 		add eax, HeapInfoBlock_size
 		secure_call HeaderStr.append_inth( rax )
@@ -257,6 +257,7 @@ DeclareFunction PrintFreeMap()
 		mov eax, dword[ ebx + HeapInfoBlock.alloc_reason ]
 		secure_call HeaderStr.append_inth( rax )
 
+		secure_call HeaderStr.append_str({CONSOLE_CHANGEFG(COLOR_WHITE),0x0A})
 		mov ebx, dword[ ebx + HeapInfoBlock.next ]
 		test ebx, ebx
 		jnz .StartTraverse
@@ -271,10 +272,10 @@ DeclareFunction PrintMemoryMap()
 	ReserveStackSpace HeaderStr, KString1024
 	UpdateStackPtr
 
-	secure_call HeaderStr.append_str({CONSOLE_CHANGEFG(COLOR_WHITE),0x0A,"Printing Heap complete memory map"})
+	secure_call HeaderStr.append_str({CONSOLE_CHANGEFG(COLOR_WHITE),0x0A,"Printing Heap complete memory map",0x0A})
 
 	.StartTraverse:
-		secure_call HeaderStr.append_str({0x0A,CONSOLE_CHANGEFG(COLOR_WHITE),"Base addr: ", CONSOLE_CHANGEFG(COLOR_BROWN)})
+		secure_call HeaderStr.append_str({"Base addr: ", CONSOLE_CHANGEFG(COLOR_BROWN)})
 		mov eax, ebx
 		add eax, HeapInfoBlock_size
 		secure_call HeaderStr.append_inth( rax )
@@ -296,6 +297,7 @@ DeclareFunction PrintMemoryMap()
 			secure_call HeaderStr.append_str( rax )
 
 		.next:
+			secure_call HeaderStr.append_str({CONSOLE_CHANGEFG(COLOR_WHITE),0x0A})
 			add ebx, dword[ ebx + HeapInfoBlock.size ]
 			add ebx, HeapInfoBlock_size
 			cmp ebx, dword[ HeapSettings.PhysicalAddrEnd ]

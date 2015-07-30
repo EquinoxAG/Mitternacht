@@ -125,6 +125,7 @@ DeclareFunction InitialiseMemoryManager( memoryMap, memoryMapLength )
 		secure_call BlockFreeMemoryRange( rdi, rsi)
 EndFunction
 
+
 ;Prints the E820 memory Map given from the bootloader
 DeclareFunction PrintMemoryMapE820()
 
@@ -133,20 +134,17 @@ DeclareFunction PrintMemoryMapE820()
 	mov r15d, dword[ physical_memory_manager.e820_size ]
 
 	;Make space for the string buffer
-	sub rsp, 2000
-	mov rdx, rsp
-
-	;Create a object string with the buffer pointing to the stack space created before, maximum 2000 characters allowed
-	ReserveStackSpace HeaderStr, KString, rdx, 2000
+	ReserveStackSpace HeaderStr, KString1024	;Allocate a string with a buffer of 1024 bytes
 	UpdateStackPtr
 
+	;Printing the given E820 memory map!
 	secure_call HeaderStr.append_str( {CONSOLE_CHANGEFG(COLOR_WHITE),0x0A, "Printing E820: memory map!" })
 
 	.PrintMap:
 		secure_call HeaderStr.append_str( {0x0A,"Base Address: ",CONSOLE_CHANGEFG(COLOR_RED)} )
 
-		mov_ts rax, qword[ (rbx->MemoryMap).base_address ]
-		secure_call HeaderStr.append_inth( rax )
+		mov_ts rax, qword[ (rbx->MemoryMap).base_address ]	;Load the base address
+		secure_call HeaderStr.append_inth( rax )		;Append the base address to the HeaderStr
 
 		secure_call HeaderStr.append_str( {CONSOLE_CHANGEFG(COLOR_WHITE)," | Length: ",CONSOLE_CHANGEFG(COLOR_RED)} )
 		mov_ts rax, qword[ (rbx->MemoryMap).length ]
@@ -160,7 +158,12 @@ DeclareFunction PrintMemoryMapE820()
 
 		jmp .selectNext
 		.reserved:
+			cmp eax, 3
+			jns .acpi_shit
 			secure_call HeaderStr.append_str( {CONSOLE_CHANGEFG(COLOR_WHITE)," | Reserved Memory"} )
+			jmp .selectNext
+		.acpi_shit:
+			secure_call HeaderStr.append_str( {CONSOLE_CHANGEFG(COLOR_WHITE), " | ACPI Reclaimable"})
 
 		.selectNext:
 
