@@ -182,6 +182,10 @@ DeclareFunction ReserveVirtMemRange( size )
 EndFunction
 
 DeclareFunction MapVirtToPhys( VirtMemAddr, PhysMemAddr, Length, Flags )
+	ReserveStackSpace R14Backup, qword
+	UpdateStackPtr
+	mov_ts qword[ R14Backup ], r14
+	
 	push r15
 	mov r15, Arg_VirtMemAddr
 	mov r14, Arg_PhysMemAddr
@@ -368,6 +372,7 @@ DeclareFunction MapVirtToPhys( VirtMemAddr, PhysMemAddr, Length, Flags )
 	.done:
 		mov rax, qword[ virtual_memory_driver.pml4_addr ]
 		mov cr3, rax
+		mov_ts r14, qword[ R14Backup ]
 EndFunction
 
 

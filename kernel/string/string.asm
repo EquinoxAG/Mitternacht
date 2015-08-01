@@ -50,6 +50,8 @@ EndFunction
 
 ;rdi = this ptr, rsi = ival
 DeclareFunction KString::append_int( ival )
+	push rbx
+	
 	mov r8, Arg_this
 
 	mov rax, Arg_ival
@@ -75,6 +77,7 @@ DeclareFunction KString::append_int( ival )
 	add rsi, 1
 	secure_call (r8->KString).append_str( rsi )
 	add rsp, 40
+	pop rbx
 EndFunction
 
 DeclareFunction KString::append_inth( ival )

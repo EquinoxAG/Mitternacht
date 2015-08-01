@@ -3,6 +3,7 @@ INCLUDE "memory/physical_memory.inc"
 INCLUDE "memory/virtual_memory.inc"
 INCLUDE "string/string.inc"
 INCLUDE "graphics/vga_driver.inc"
+INCLUDE "keyboard/keyboard.inc"
 
 extern kernel_start
 extern kernel_end
@@ -185,90 +186,133 @@ DeclareFunction AllocateMemory( size, flags )
 	ReserveStackSpace rbx_backup, qword
 	UpdateStackPtr
 
+	;First backup rbx and the flags requested
 	mov_ts qword[ rbx_backup ], rbx
 	mov r15, Arg_size
 	mov_ts qword[ MemFlags ], Arg_flags
 
+	;Reserve a virtual address range big enough to hold the memory
 	secure_call ReserveVirtMemRange( r15 )
 
+	;Save the Virtual address returned by the function
 	mov_ts qword[ VMemAddr ], rax
+
+	;Load the virtual address into rbx
 	mov rbx, rax
 
 
+	;Now load the first free entry in the memory manager
 	mov edi, dword[ physical_memory_manager.first_entry ]
+
+	;No blocks has been allocated by now, therefore the size already allocated is zero
 	xor rcx, rcx
 
 	.StartMapping:
+		;eax = takes the first available block and untys it from the free list
 		mov eax, dword[ edi + InternMemoryMap.next ]
 		mov dword[ physical_memory_manager.first_entry ], eax
 	
+		; If the memory is not free select the next block
 		cmp dword[ edi + InternMemoryMap.type ], MEM_FREE
 		jnz .selectNext
 
+		; Else reserve the memory
 		mov dword[ edi + InternMemoryMap.type ], MEM_RESERVED
 
+		;Calculate the real physical address out of the bitmap
 		sub edi, dword[ physical_memory_manager.mmap_beg ]
 		shl edi, (MEM_PAGE_SIZE_SHR-BYTES_PER_PAGE_SHL)
 		
 
+		;Save rax as it holds the address to the next free block
 		push rax
+		;Load the address of the current allocated block
 		mov rax, rdi
 		
+		;Map the physical memory to the virtual address range allocated
 		secure_call MapVirtToPhys( rbx, rax, MEM_PAGE_SIZE, qword[ MemFlags ] ) 
 
+		;Reload the next free block address
 		pop rax
 
 
+		;The length needed to further allocate decreases by the length currently allocated
 		sub r15, MEM_PAGE_SIZE
-		jbe .done
+		jbe .done		;If the length goes below 0 or is equal to zero exit function
 
+		;Else increase the virtual address to map to
 		add rbx, MEM_PAGE_SIZE
 
 		.selectNext:
+			;If the next block is zero, there is no more memory to allocate, print error, exit function
 			or eax, eax
 			jz .fatal_no_mem
 
+			;Else load the address of the next free block
 			mov edi, eax
+			;Start the mapping allover
 			jmp .StartMapping
 
 		.fatal_no_mem:
-			mov rcx, 0xFAD
+			;No more memory? print error, spinlock
+			secure_call ClearScreen()
+			secure_call DrawString( {CONSOLE_CHANGEFG(COLOR_BRIGHTRED), "No more memory left to allocate",0x0A})
 			jmp $
 
+	;Okay the memory has been allocated
 	.done:
+		;Restore rbx, and load the virtual address into rax
 		mov_ts rax, qword[ VMemAddr ]
 		mov_ts rbx, qword[ rbx_backup ]
 EndFunction
 
 ;Checks if the specified memory range is completely free
 DeclareFunction IsFreeMemoryRange(PhysMemStart, PhysMemLength)
+	;First check if the memory length is page size aligned
 	test Arg_PhysMemLength, MEM_PAGE_MASK
 	jz .startSearching
+
+	;If not align the physical memory length to a page size
 
 	add Arg_PhysMemLength, MEM_PAGE_SIZE
 	and esi, ~MEM_PAGE_MASK
 
 	.startSearching:
+		;Calculate the address in the bitmap out of the real physical address
 		shr rdi, (MEM_PAGE_SIZE_SHR)
+		;Calculate the number of blocks used by the specified length
 		shr esi, (MEM_PAGE_SIZE_SHR)
+		;Every block is a specific length wide, therfore increase edi to point to the right block
 		shl edi, (BYTES_PER_PAGE_SHL)
+		;Now the offset has been determinated, let it point to the right entry in the bitmap
 		add edi, dword[ physical_memory_manager.mmap_beg ]
+
 	.startDeterminating:
+		;If the memory type is not free, the memory range is not entirely free, therefore call failed
 		cmp dword[ edi + InternMemoryMap.type ], MEM_FREE
 		jnz .failed
+		;Else let rdi point to the next block
 		add edi, InternMemoryMap_size
+		;Decrease the number of blocks to scan by one
 		sub esi, 1
 		jnz .startDeterminating
+
+		;Okay the whole memory range was free clear eax
 		xor eax, eax
 		jmp .endFunc
 	.failed:
+		;Reserved blocks have the message why they are blocked saved, in the next field of the InternMemoryMap structure, load the message into eax
 		mov eax, dword[ edi + InternMemoryMap.next ]
+		;If the type of the InternMemoryMap is MEM_UNUSABLE, there won't be a message in the InternMemoryMap.next block, therefore load a specific message for these kind of blocks
 		cmp byte[ edi + InternMemoryMap.type ], MEM_UNUSABLE
 		jnz .endFunc
+		;The block message, every MEM_UNUSABLE block becomes
 		mov eax, Msg_blocked_mem
 	.endFunc:
+		;Return to the callee, eax = zero on return, else eax holds the address of the string, which describes the reason, the block was allocated for
 EndFunction
 
+;Blocks the specified physical memory range
 DeclareFunction BlockFreeMemoryRange( PhysMemStart, PhysMemSize)
 	test Arg_PhysMemSize, MEM_PAGE_MASK
 	jz .startBlock
@@ -287,10 +331,81 @@ DeclareFunction BlockFreeMemoryRange( PhysMemStart, PhysMemSize)
 		jnz .no_change
 			sub qword[ physical_memory_manager.free_memory ], MEM_PAGE_SIZE
 		.no_change:
-		mov dword[ edi + InternMemoryMap.type ], MEM_UNUSABLE
+		mov dword[ edi + InternMemoryMap.type ], MEM_UNUSABLE		
 		add edi, InternMemoryMap_size
 		sub esi, 1
 		jnz .startBlocking
+EndFunction
+
+;Shows the current memory state of the whole system memory!
+DeclareFunction PrintPhysicalMemMap()
+	sub rsp, 10000
+	mov rdx, rsp
+	ReserveStackSpace InfoStr, KString, rdx, 10000	;1024 bytes should be enough
+	ReserveStackSpace CurrNext, qword
+	ReserveStackSpace CurrType, qword
+	UpdateStackPtr
+
+	mov ebx, dword[ physical_memory_manager.mmap_beg ]	;Start with the begin of the memory map
+	mov eax, dword[ ebx + InternMemoryMap.type ]
+	mov ecx, dword[ ebx + InternMemoryMap.next ]
+
+	xor r15, r15
+	xor r14, r14
+	mov_ts qword[ CurrType ], rax
+	mov_ts qword[ CurrNext ], rcx
+
+	
+
+	.TraverseMemoryMap:	
+		cmp dword[ ebx + InternMemoryMap.type ], eax
+		jnz .print_select_next
+
+		;Okay the memory range is the same as before
+		add r14, MEM_PAGE_SIZE
+		add ebx, InternMemoryMap_size
+		cmp ebx, dword[ physical_memory_manager.mmap_end ]
+		js .TraverseMemoryMap
+
+		secure_call InfoStr.c_str()
+		secure_call DrawString( rax )
+		jmp .end
+
+	.print_select_next:
+		secure_call InfoStr.append_str( {0x0A, "Base addr: "})
+		secure_call InfoStr.append_inth( r15 )
+		secure_call InfoStr.append_str( " | Length: " )
+		secure_call InfoStr.append_inth( r14 )
+		secure_call InfoStr.append_str( " | usage: ")
+		
+		mov_ts eax, dword[ CurrType ]
+		cmp eax, MEM_FREE
+		jnz .next_check
+
+		secure_call InfoStr.append_str( " Free memory" )
+		jmp .load_next
+
+		.next_check:
+			cmp eax, MEM_RESERVED
+			jz .next_check2
+			secure_call InfoStr.append_str( "Unusable memory" )
+			jmp .load_next
+		.next_check2:
+			secure_call InfoStr.append_str( "Reserved memory" )
+
+
+		.load_next:
+			mov eax, dword[ ebx + InternMemoryMap.type ]
+			mov ecx, dword[ ebx + InternMemoryMap.next ]
+			add r15, r14
+			xor r14, r14
+			mov_ts qword[ CurrType ], rax
+			mov_ts qword[ CurrNext ], rcx
+			jmp .TraverseMemoryMap
+
+
+	.end:
+			
 EndFunction
 
 Msg_blocked_mem db 'Unusable memory',0

@@ -8,6 +8,9 @@ INCLUDE "string/string.inc"
 INCLUDE "ata/ata_driver.inc"
 INCLUDE "acpi/acpi.inc"
 INCLUDE "keyboard/keyboard.inc"
+INCLUDE "apic/apic.inc"
+INCLUDE "exception/exception.inc"
+INCLUDE "hpet/hpet.inc"
 
 ;The main function takes one argument
 global kernelMain
@@ -31,13 +34,18 @@ kernelMain:
 
 	secure_call InitialiseHeap( 0x200000 )
 
+
+	secure_call PrintPhysicalMemMap()
+
 	secure_call InitialiseACPI()
+	
+	secure_call InitialiseAPIC()
+
+	secure_call InitialiseHPET()
 
 	DestroyStack kernelSt
 	jmp $
 
-
-DrawStr db 'Hallo Master File',0x0A,'Welt from kernel',CONSOLE_CHANGEFG(COLOR_RED),'String red background',0
 
 section .bss
 MbrStrucAddr resq 0
