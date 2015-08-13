@@ -32,7 +32,7 @@ DeclareFunction InitialiseHPET()
 
 	mov ebx, dword[ rax + HPETRegisters.GeneralCapabilitys+4]
 	xor edx, edx
-	mov rax, 1000000000000000
+	mov rax, (1000000000000000/1000)
 	div rbx
 
 	mov qword[ hpet_settings.ticks_1_ms ], rax
@@ -65,14 +65,26 @@ DeclareFunction InitialiseHPET()
 	
 	or rcx, ((1<<2)|(1<<6)|(1<<3))
 	mov qword[ rax + HPETRegisters.Timer0Config ], rcx
-	
-	mov rcx, qword[ hpet_settings.ticks_1_ms ]
-	mov qword[ rax + HPETRegisters.Timer0Comp ], rcx
+	mov rdi, rax
 
+	mov rax, qword[ hpet_settings.ticks_1_ms ]
+	mov rbx, 1000
+	mul rbx
+	xor rdx, rdx
+	mov qword[ rdi + HPETRegisters.Timer0Comp ], rax
 	
-	mov rcx, qword[ rax + HPETRegisters.GeneralConfiguration ]
-	or rcx, 1
-	mov qword[ rax + HPETRegisters.GeneralConfiguration ], rcx
+	cli
+	
+	mov rax, qword[ rdi + HPETRegisters.GeneralConfiguration ]
+	or rax, 1
+	mov qword[ rdi + HPETRegisters.GeneralConfiguration ], rax
+
+	fild qword[ dark ]
+	fld1
+	fdiv st1
+	fst qword[ dark ]
+	call ConvertToString
+
 
 	jmp $
 
@@ -80,6 +92,40 @@ DeclareFunction InitialiseHPET()
 
 	.end:
 EndFunction
+
+;Convert IEE Floating point to string
+ConvertToString:
+	mov ecx, dword[ dark + 4 ]
+	shr ecx, 20
+	
+	cmp ecx, 1023
+	js .below1
+	
+	jmp $
+
+	.below1:
+		sub ecx, 1023
+		not ecx
+		add ecx, 1
+
+		mov rax, 0x10000000000000
+		mov rbx, qword[ dark ]
+		and rbx, qword[ mask ]
+		add rax, rbx
+		jmp $
+
+		xor rbx, rbx
+		xor rdx, rdx
+		
+		bts rbx, rcx
+		div rbx
+		jmp $
+
+
+
+
+	
+	
 
 InterruptFires:
 	push rax
@@ -91,6 +137,8 @@ InterruptFires:
 HpetTableAddr dq 0
 
 ticks dd 0
+dark dq 3
+mask dq 0xFFFFFFFFFFFFF
 
 section .bss
 hpet_settings:

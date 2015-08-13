@@ -26,6 +26,7 @@ DefineFunction KString::str_cmp, 1
 DefineFunction KString::append_str, 2
 DefineFunction KString::append_int, 1
 DefineFunction KString::append_inth, 1
+DefineFunction KString::append_double, 2
 DefineFunction KString::nline,0 
 DefineFunction KString::clear, 0 
 

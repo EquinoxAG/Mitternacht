@@ -222,5 +222,17 @@ DeclareFunction KString::append_str( app_str )
 		mov_ts dword[ (rdi->KString).length ], r8d
 EndFunction
 
+DeclareFunction KString::append_double( value, precision )
+	mov rcx, rsi
+	shr rcx, 52
+	xor rax, rax
+	and ecx, 0x7FF
+	bts rax, rcx
+
+	push rdi
+	secure_call (rdi->KString).append_int(rax)
+	pop rdi
+
+EndFunction
 
 ImportAllMgrFunctions
